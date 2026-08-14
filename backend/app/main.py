@@ -101,11 +101,19 @@ async def health():
 # ----------------------------------------------------------------------
 def _extract_and_normalize(url: str) -> NormalizedProduct:
     url = url_service.validate_url(url)
-    raw = url_service.extract(url)
+    try:
+        raw = url_service.extract(url)
+        missing_core = not raw.get("product_name") or raw.get("price") is None
+    except Exception as exc:
+        from urllib.parse import urlparse as _up
+        _domain = _up(url).netloc.replace("www.", "").split(".")[0].title()
+        raw = {
+            "source_url": url,
+            "seller_name": _domain,
+            "extraction_notes": [f"Lightweight scraper blocked or failed (HTTP error/timeout). Trying browser fallback."]
+        }
+        missing_core = True
 
-    # If the lightweight scraper got blocked (no name, no price),
-    # retry with Playwright (full headless browser) before AI fallback.
-    missing_core = not raw.get("product_name") or raw.get("price") is None
     if missing_core:
         pw_html = playwright_service.fetch_html(url)
         if pw_html:
